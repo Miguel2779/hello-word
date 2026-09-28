@@ -1,0 +1,1313 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Registro de Ingresos de Carne</title>
+
+<!-- Web app instalable (PWA) -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#a3402b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ingresos Carne">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+
+<!-- Firebase (sincronización entre dispositivos/sucursales) -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<style>
+:root{
+  --bg:#f7f5f2; --card:#ffffff; --text:#231f1a; --muted:#7a726a;
+  --accent:#a3402b; --accent2:#5c6b4a; --border:#e6e0d8;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1c1917; --card:#26221f; --text:#f2ede7; --muted:#a89e94;
+    --accent:#e0764f; --accent2:#8fae74; --border:#3a342f;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1c1917; --card:#26221f; --text:#f2ede7; --muted:#a89e94;
+  --accent:#e0764f; --accent2:#8fae74; --border:#3a342f;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding:16px; max-width:640px; margin:0 auto;
+}
+h1{font-size:1.3rem; margin:4px 0 2px}
+p.sub{color:var(--muted); margin:0 0 18px; font-size:0.9rem}
+.card{
+  background:var(--card); border:1px solid var(--border); border-radius:14px;
+  padding:16px; margin-bottom:16px;
+}
+.card h2{font-size:1rem; margin:0 0 12px}
+label{display:block; font-size:0.82rem; color:var(--muted); margin:10px 0 4px}
+input,select{
+  width:100%; padding:10px; border-radius:9px; border:1px solid var(--border);
+  background:var(--bg); color:var(--text); font-size:0.95rem;
+}
+.row{display:flex; gap:10px}
+.row > div{flex:1}
+button.primary{
+  margin-top:14px; width:100%; padding:12px; border:none; border-radius:10px;
+  background:var(--accent); color:#fff; font-size:0.95rem; font-weight:600;
+}
+button.secondary{
+  margin-top:10px; width:100%; padding:12px; border:1px solid var(--border); border-radius:10px;
+  background:transparent; color:var(--text); font-size:0.95rem; font-weight:600;
+}
+.summary{display:grid; grid-template-columns:repeat(2,1fr); gap:10px}
+.summary .item{
+  background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:10px;
+}
+.summary .item .n{font-size:0.75rem; color:var(--muted)}
+.summary .item .v{font-size:1.05rem; font-weight:700}
+.summary .item .v2{font-size:0.85rem; color:var(--accent2); font-weight:600; margin-top:2px}
+.total-general{
+  display:flex; justify-content:space-between; align-items:center;
+  margin-top:12px; padding-top:12px; border-top:1px solid var(--border);
+  font-weight:700;
+}
+.total-general span:last-child{font-size:1.1rem; color:var(--accent)}
+.sucursal-block{margin-bottom:14px}
+.sucursal-block:last-child{margin-bottom:0}
+.sucursal-block h3{
+  font-size:0.9rem; margin:0 0 8px; display:flex; justify-content:space-between;
+  padding-bottom:6px; border-bottom:1px solid var(--border);
+}
+.sucursal-block h3 .tot{color:var(--accent); font-weight:700}
+.sucursal-block table{font-size:0.82rem}
+.sucursal-block td, .sucursal-block th{padding:5px 4px}
+.tag{
+  display:inline-block; padding:2px 8px; border-radius:20px; font-size:0.72rem;
+  font-weight:600; color:#fff;
+}
+.list{overflow-x:auto}
+table{width:100%; border-collapse:collapse; font-size:0.85rem}
+th,td{text-align:left; padding:8px 6px; border-bottom:1px solid var(--border); white-space:nowrap}
+th{color:var(--muted); font-weight:600; font-size:0.75rem}
+tbody tr, table tr[ondblclick]{cursor:pointer}
+tr[ondblclick]:hover{background:var(--bg)}
+th[ondblclick]{cursor:pointer; user-select:none}
+th[ondblclick]:hover{color:var(--accent)}
+.del{color:var(--accent); background:none; border:none; font-size:0.8rem; cursor:pointer}
+.edit-btn{color:var(--accent2); background:none; border:none; font-size:0.8rem; cursor:pointer}
+.empty{color:var(--muted); font-size:0.88rem; text-align:center; padding:20px 0}
+tr.selected{background:var(--bg)}
+
+.overlay{
+  position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none;
+  align-items:center; justify-content:center; padding:16px; z-index:50;
+}
+.overlay.open{display:flex}
+.modal{
+  background:var(--card); border:1px solid var(--border); border-radius:14px;
+  padding:16px; width:100%; max-width:420px; max-height:90vh; overflow-y:auto;
+}
+.modal h2{font-size:1rem; margin:0 0 12px}
+.modal-actions{display:flex; gap:10px; margin-top:14px}
+.modal-actions button{flex:1; padding:11px; border-radius:10px; font-size:0.9rem; font-weight:600; cursor:pointer}
+.btn-cancel{border:1px solid var(--border); background:transparent; color:var(--text)}
+.btn-save{border:none; background:var(--accent); color:#fff}
+</style>
+</head>
+<body>
+
+<h1 style="display:flex; align-items:center; gap:10px">
+  <img src="logo.png" alt="Luconi" style="height:34px; width:auto">
+  Registro de Ingresos de Carne
+</h1>
+<p class="sub">Carne vacuna · Cerdo · Ave · Broza · Cabrito · Cordero · Lechón</p>
+<p class="sub" id="estadoSync" style="margin-top:-14px">Conectando…</p>
+
+<div class="card">
+  <h2>Nuevo ingreso</h2>
+  <label for="tipo">Familia</label>
+  <select id="tipo">
+    <option value="Carne vacuna">Carne vacuna</option>
+    <option value="Cerdo">Cerdo</option>
+    <option value="Ave">Ave</option>
+    <option value="Broza">Broza</option>
+    <option value="Cabrito">Cabrito</option>
+    <option value="Cordero">Cordero</option>
+    <option value="Lechon">Lechón</option>
+  </select>
+
+  <div class="row">
+    <div>
+      <label for="fecha">Fecha</label>
+      <input type="date" id="fecha">
+    </div>
+    <div>
+      <label for="sucursal">Sucursal</label>
+      <select id="sucursal">
+        <option value="Rio III">Río III</option>
+        <option value="Sta Rosa">Sta Rosa</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label for="kilos">Kilos</label>
+      <input type="number" id="kilos" step="0.1" placeholder="0.0">
+    </div>
+    <div>
+      <label for="precio">Importe total (comprobante)</label>
+      <input type="number" id="precio" step="0.01" placeholder="opcional">
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label for="proveedor">Proveedor</label>
+      <div style="display:flex; gap:6px">
+        <select id="proveedor" onchange="manejarNuevoProveedor(this)" style="flex:1"></select>
+        <button type="button" title="Eliminar proveedor seleccionado" onclick="eliminarProveedorSeleccionado()" style="border:1px solid var(--border); border-radius:8px; padding:0 10px; color:var(--text); background:transparent; cursor:pointer">🗑</button>
+      </div>
+    </div>
+    <div>
+      <label for="factura">Fact. Nro</label>
+      <input type="text" id="factura" placeholder="opcional">
+    </div>
+  </div>
+
+  <label for="notas">Notas</label>
+  <input type="text" id="notas" placeholder="opcional">
+
+  <button class="primary" onclick="agregar()">Agregar ingreso</button>
+  <button class="secondary" onclick="abrirResumenSucursal()">🏬 Resumen por sucursal</button>
+  <button class="secondary" onclick="abrirResumenProveedor()">📦 Resumen por proveedor</button>
+  <button class="secondary" onclick="abrirAuditoria()">📊 Auditoría (compra vs venta)</button>
+</div>
+
+<div class="card">
+  <h2>Resumen por familia (kilos e importe)</h2>
+  <div class="summary" id="resumen"></div>
+  <div class="total-general">
+    <span>Total general</span>
+    <span id="totalGeneral">$ 0,00</span>
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center">
+    <h2 style="margin:0">Historial</h2>
+    <button class="del" style="border:1px solid var(--border); border-radius:8px; padding:6px 10px; color:var(--text)" onclick="exportarExcel()">⬇ Exportar a Excel</button>
+  </div>
+  <div class="list" id="lista"></div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2>Editar ingreso</h2>
+
+    <label for="e_tipo">Familia</label>
+    <select id="e_tipo">
+      <option value="Carne vacuna">Carne vacuna</option>
+      <option value="Cerdo">Cerdo</option>
+      <option value="Ave">Ave</option>
+      <option value="Broza">Broza</option>
+      <option value="Cabrito">Cabrito</option>
+      <option value="Cordero">Cordero</option>
+      <option value="Lechon">Lechón</option>
+    </select>
+
+    <div class="row">
+      <div>
+        <label for="e_fecha">Fecha</label>
+        <input type="date" id="e_fecha">
+      </div>
+      <div>
+        <label for="e_sucursal">Sucursal</label>
+        <select id="e_sucursal">
+          <option value="Rio III">Río III</option>
+          <option value="Sta Rosa">Sta Rosa</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="e_kilos">Kilos</label>
+        <input type="number" id="e_kilos" step="0.1">
+      </div>
+      <div>
+        <label for="e_importe">Importe total (comprobante)</label>
+        <input type="number" id="e_importe" step="0.01">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="e_proveedor">Proveedor</label>
+        <select id="e_proveedor" onchange="manejarNuevoProveedor(this)"></select>
+      </div>
+      <div>
+        <label for="e_factura">Fact. Nro</label>
+        <input type="text" id="e_factura">
+      </div>
+    </div>
+
+    <label for="e_notas">Notas</label>
+    <input type="text" id="e_notas">
+
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn-save" onclick="guardarEdicion()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayAuditoria">
+  <div class="modal" style="max-width:900px">
+    <h2>📊 Auditoría: compra vs venta</h2>
+
+    <div class="row">
+      <div>
+        <label for="aud_desde">Fecha desde</label>
+        <input type="date" id="aud_desde">
+      </div>
+      <div>
+        <label for="aud_hasta">Fecha hasta</label>
+        <input type="date" id="aud_hasta">
+      </div>
+    </div>
+
+    <label for="ventaFile">Planilla de venta (.xlsx)</label>
+    <input type="file" id="ventaFile" accept=".xlsx" onchange="cargarVenta(event)">
+    <p class="sub" id="ventaFileNombre" style="margin:6px 0 0"></p>
+
+    <div id="analisisVenta" style="margin-top:14px"></div>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="cerrarAuditoria()">Cerrar</button>
+      <button class="btn-save" onclick="ejecutarAuditoria()">Comparar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayResumenSucursal">
+  <div class="modal" style="max-width:700px">
+    <h2>🏬 Resumen por sucursal</h2>
+    <div class="row">
+      <div>
+        <label for="rs_desde">Fecha desde</label>
+        <input type="date" id="rs_desde" onchange="filtrarResumenSucursal()">
+      </div>
+      <div>
+        <label for="rs_hasta">Fecha hasta</label>
+        <input type="date" id="rs_hasta" onchange="filtrarResumenSucursal()">
+      </div>
+    </div>
+    <button class="del" style="border:1px solid var(--border); border-radius:8px; padding:6px 10px; color:var(--text); margin:8px 0 0" onclick="limpiarFiltroSucursal()">Ver todo el historial</button>
+    <div id="resumenSucursal" style="margin-top:14px"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="cerrarResumenSucursal()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayResumenProveedor">
+  <div class="modal" style="max-width:700px">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px">
+      <h2 style="margin:0">📦 Resumen por proveedor</h2>
+      <button class="del" style="border:1px solid var(--border); border-radius:8px; padding:6px 10px; color:var(--text); white-space:nowrap" onclick="exportarResumenProveedor()">⬇ Exportar a Excel</button>
+    </div>
+    <div class="row">
+      <div>
+        <label for="rp_desde">Fecha desde</label>
+        <input type="date" id="rp_desde" onchange="filtrarResumenProveedor()">
+      </div>
+      <div>
+        <label for="rp_hasta">Fecha hasta</label>
+        <input type="date" id="rp_hasta" onchange="filtrarResumenProveedor()">
+      </div>
+    </div>
+    <button class="del" style="border:1px solid var(--border); border-radius:8px; padding:6px 10px; color:var(--text); margin:8px 0 0" onclick="limpiarFiltroProveedor()">Ver todo el historial</button>
+    <div id="resumenProveedor" style="margin-top:14px"></div>
+    <div class="total-general">
+      <span>Total general</span>
+      <span id="totalGeneralProveedor">$ 0,00</span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="cerrarResumenProveedor()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+/* ======================================================================
+   CONFIGURACIÓN DE FIREBASE (sincronización entre celulares/sucursales)
+   ----------------------------------------------------------------------
+   Reemplazá estos valores por los de TU proyecto de Firebase:
+   Firebase console → ⚙️ Configuración del proyecto → tus apps → SDK setup
+   Mientras diga "TU_API_KEY" la app funciona igual, pero guardando los
+   datos solo en este celular (sin sincronizar con los demás).
+   ====================================================================== */
+const firebaseConfig = {
+  apiKey: "TU_API_KEY",
+  authDomain: "TU_PROYECTO.firebaseapp.com",
+  projectId: "TU_PROYECTO",
+  storageBucket: "TU_PROYECTO.appspot.com",
+  messagingSenderId: "TU_SENDER_ID",
+  appId: "TU_APP_ID"
+};
+
+function descargarArchivo(buf, filename){
+  const blob = new Blob([buf], {type:'application/octet-stream'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+
+const COLORS = {'Carne vacuna':'#a3402b', Cerdo:'#c98a4b', Ave:'#c9ad46', Broza:'#5c6b4a', Cabrito:'#8a6d4f', Cordero:'#7b8ca0', Lechon:'#b6825f'};
+const KEY = 'registro_carnes_v1';
+const KEY_PROVEEDORES = 'registro_carnes_proveedores_v1';
+const NUEVO_PROVEEDOR = '__nuevo__';
+const ELIMINAR_PROVEEDOR = '__eliminar__';
+
+function cargar(){
+  try{ return JSON.parse(localStorage.getItem(KEY)) || []; }
+  catch(e){ return []; }
+}
+function guardar(data){
+  try{ localStorage.setItem(KEY, JSON.stringify(data)); }
+  catch(e){ console.error('No se pudo guardar', e); }
+}
+
+function cargarProveedores(){
+  try{ return JSON.parse(localStorage.getItem(KEY_PROVEEDORES)) || []; }
+  catch(e){ return []; }
+}
+function guardarProveedores(lista){
+  try{ localStorage.setItem(KEY_PROVEEDORES, JSON.stringify(lista)); }
+  catch(e){ console.error('No se pudo guardar', e); }
+}
+
+const MIGRACION_TIPO = {Pollo:'Ave', Vacuna:'Carne vacuna'};
+
+let entradas = [];
+let proveedores = [];
+let dbCap = null;
+let sincronizado = false;
+
+function aplicarMigracionTipo(lista){
+  lista.forEach(e => { if(MIGRACION_TIPO[e.tipo]) e.tipo = MIGRACION_TIPO[e.tipo]; });
+  return lista;
+}
+
+const MIGRACION_PROVEEDOR = {FVG:'FGV'};
+
+async function corregirNombresProveedor(){
+  let cambio = false;
+
+  for(const viejo in MIGRACION_PROVEEDOR){
+    const nuevo = MIGRACION_PROVEEDOR[viejo];
+
+    if(proveedores.includes(viejo)){
+      proveedores = proveedores.filter(p => p !== viejo);
+      if(!proveedores.includes(nuevo)) proveedores.push(nuevo);
+      proveedores.sort((a,b) => a.localeCompare(b));
+      if(dbCap){
+        await dbCap.doc('meta/proveedores').set({lista: proveedores});
+      }else{
+        guardarProveedores(proveedores);
+      }
+      cambio = true;
+    }
+
+    const afectadas = entradas.filter(e => e.proveedor === viejo);
+    for(const e of afectadas){
+      e.proveedor = nuevo;
+      if(dbCap){
+        await dbCap.collection('ingresos').doc(String(e.id)).set(e);
+      }
+      cambio = true;
+    }
+    if(!dbCap && afectadas.length){
+      guardar(entradas);
+    }
+  }
+
+  if(cambio) render();
+}
+
+async function initDatos(){
+  try{
+    if(firebaseConfig.apiKey && firebaseConfig.apiKey !== 'TU_API_KEY' && typeof firebase !== 'undefined'){
+      if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+      dbCap = firebase.firestore();
+    }
+  }catch(e){ console.error('No se pudo conectar con Firebase', e); dbCap = null; }
+
+  const estado = document.getElementById('estadoSync');
+
+  if(!dbCap){
+    // sin conexión al almacenamiento compartido: se usa este dispositivo únicamente
+    entradas = aplicarMigracionTipo(cargar());
+    guardar(entradas);
+    proveedores = cargarProveedores();
+    entradas.forEach(e => { if(e.proveedor && !proveedores.includes(e.proveedor)) proveedores.push(e.proveedor); });
+    proveedores.sort((a,b) => a.localeCompare(b));
+    guardarProveedores(proveedores);
+    await corregirNombresProveedor();
+    if(estado) estado.textContent = '⚠ Guardado solo en este dispositivo';
+    render();
+    return;
+  }
+
+  if(estado) estado.textContent = '🔄 Sincronizando…';
+
+  await migrarLocalADb();
+  suscribirIngresosDb();
+  suscribirProveedoresDb();
+}
+
+async function migrarLocalADb(){
+  try{
+    const marca = await dbCap.doc('meta/migracion').get();
+    if(marca.exists) return;
+
+    const localEntradas = aplicarMigracionTipo(cargar());
+    for(const e of localEntradas){
+      await dbCap.collection('ingresos').doc(String(e.id)).set(e);
+    }
+
+    const localProveedores = cargarProveedores();
+    const set = new Set(localProveedores);
+    localEntradas.forEach(e => { if(e.proveedor) set.add(e.proveedor); });
+    if(set.size){
+      const lista = Array.from(set).sort((a,b) => a.localeCompare(b));
+      await dbCap.doc('meta/proveedores').set({lista});
+    }
+
+    await dbCap.doc('meta/migracion').set({hecho:true, fecha:new Date().toISOString()});
+  }catch(err){
+    console.error('No se pudo migrar los datos locales', err);
+  }
+}
+
+function suscribirIngresosDb(){
+  dbCap.collection('ingresos').onSnapshot(snap => {
+    entradas = snap.docs.map(d => d.data());
+    entradas.sort((a,b) => (b.id||0) - (a.id||0));
+    sincronizado = true;
+    const estado = document.getElementById('estadoSync');
+    if(estado) estado.textContent = '✓ Sincronizado entre dispositivos';
+    corregirNombresProveedor();
+    render();
+  }, err => {
+    console.error('Error de sincronización', err);
+    const estado = document.getElementById('estadoSync');
+    if(estado) estado.textContent = '⚠ Sin conexión — reintentando…';
+  });
+}
+
+function suscribirProveedoresDb(){
+  dbCap.doc('meta/proveedores').onSnapshot(snap => {
+    proveedores = (snap.exists && snap.data().lista) || [];
+    proveedores.sort((a,b) => a.localeCompare(b));
+    guardarProveedores(proveedores); // copia local para la próxima vez que se abra la app
+    corregirNombresProveedor();
+    const selAlta = document.getElementById('proveedor');
+    if(selAlta && selAlta.value !== NUEVO_PROVEEDOR){
+      poblarProveedores(selAlta, selAlta.value);
+    }
+  }, err => {
+    console.error('Error de sincronización de proveedores', err);
+  });
+}
+
+async function guardarEntradaRemota(entry){
+  if(dbCap){
+    await dbCap.collection('ingresos').doc(String(entry.id)).set(entry);
+  }else{
+    const idx = entradas.findIndex(e => e.id === entry.id);
+    if(idx > -1) entradas[idx] = entry; else entradas.unshift(entry);
+    guardar(entradas);
+    render();
+  }
+}
+
+async function eliminarEntradaRemota(id){
+  if(dbCap){
+    await dbCap.collection('ingresos').doc(String(id)).delete();
+  }else{
+    entradas = entradas.filter(e => e.id !== id);
+    guardar(entradas);
+    render();
+  }
+}
+
+async function agregarProveedorRemoto(nombre){
+  if(proveedores.includes(nombre)) return;
+  proveedores.push(nombre);
+  proveedores.sort((a,b) => a.localeCompare(b));
+  if(dbCap){
+    await dbCap.doc('meta/proveedores').set({lista: proveedores});
+  }else{
+    guardarProveedores(proveedores);
+  }
+}
+
+function poblarProveedores(selectEl, valorActual){
+  const actual = valorActual || '';
+  selectEl.innerHTML =
+    '<option value="">Sin especificar</option>' +
+    proveedores.map(p => `<option value="${p}">${p}</option>`).join('') +
+    `<option value="${NUEVO_PROVEEDOR}">+ Agregar proveedor nuevo…</option>` +
+    (proveedores.length ? `<option value="${ELIMINAR_PROVEEDOR}">🗑 Eliminar proveedor…</option>` : '');
+  selectEl.value = proveedores.includes(actual) ? actual : (actual ? '' : '');
+  if(actual && !proveedores.includes(actual)){
+    // proveedor histórico que ya no está en la lista (raro, pero lo mostramos igual)
+    const opt = document.createElement('option');
+    opt.value = actual;
+    opt.textContent = actual;
+    selectEl.insertBefore(opt, selectEl.lastElementChild);
+    selectEl.value = actual;
+  }
+}
+
+async function eliminarProveedorPorNombre(nombreOriginal, selectEl){
+  const nombre = MIGRACION_PROVEEDOR[nombreOriginal] || nombreOriginal;
+  if(!proveedores.includes(nombre)){
+    alert('No se encontró ese proveedor en la lista.');
+    if(selectEl) selectEl.value = '';
+    return;
+  }
+
+  const enUso = entradas.some(e => e.proveedor === nombre);
+  const aviso = enUso
+    ? `El proveedor "${nombre}" tiene ingresos registrados. Se eliminará solo de la lista de selección (los ingresos existentes conservan el nombre). ¿Continuar?`
+    : `¿Eliminar el proveedor "${nombre}" de la lista?`;
+  if(!confirm(aviso)){
+    if(selectEl) selectEl.value = '';
+    return;
+  }
+
+  proveedores = proveedores.filter(p => p !== nombre);
+  if(dbCap){
+    await dbCap.doc('meta/proveedores').set({lista: proveedores});
+  }else{
+    guardarProveedores(proveedores);
+  }
+
+  poblarProveedores(document.getElementById('proveedor'), '');
+  const eProv = document.getElementById('e_proveedor');
+  if(eProv) poblarProveedores(eProv, eProv.value === nombre ? '' : eProv.value);
+}
+
+async function eliminarProveedorSeleccionado(){
+  const selectEl = document.getElementById('proveedor');
+  const nombre = selectEl.value;
+
+  if(!nombre || nombre === NUEVO_PROVEEDOR || nombre === ELIMINAR_PROVEEDOR){
+    alert('Elegí un proveedor de la lista para eliminarlo.');
+    return;
+  }
+  await eliminarProveedorPorNombre(nombre, selectEl);
+}
+
+async function manejarNuevoProveedor(selectEl){
+  if(selectEl.value === ELIMINAR_PROVEEDOR){
+    if(!proveedores.length){
+      alert('No hay proveedores para eliminar.');
+      selectEl.value = '';
+      return;
+    }
+    const nombre = prompt('Escribí el nombre exacto del proveedor a eliminar:\n\n' + proveedores.join('\n'));
+    if(!nombre || !nombre.trim()){
+      selectEl.value = '';
+      return;
+    }
+    await eliminarProveedorPorNombre(nombre.trim(), selectEl);
+    return;
+  }
+
+  if(selectEl.value !== NUEVO_PROVEEDOR) return;
+  const nombre = prompt('Nombre del nuevo proveedor:');
+  if(!nombre || !nombre.trim()){
+    selectEl.value = '';
+    return;
+  }
+  const limpio = nombre.trim();
+  await agregarProveedorRemoto(limpio);
+
+  const otroSelect = selectEl.id === 'proveedor'
+    ? document.getElementById('e_proveedor')
+    : document.getElementById('proveedor');
+  const valorOtro = otroSelect.value === NUEVO_PROVEEDOR ? '' : otroSelect.value;
+  poblarProveedores(selectEl, limpio);
+  poblarProveedores(otroSelect, valorOtro);
+}
+
+let editandoId = null;
+let ordenCampo = null;
+let ordenAsc = true;
+
+function ordenarPor(campo){
+  if(ordenCampo === campo){
+    ordenAsc = !ordenAsc;
+  }else{
+    ordenCampo = campo;
+    ordenAsc = true;
+  }
+  render();
+}
+
+document.getElementById('fecha').value = new Date().toISOString().slice(0,10);
+// se muestra de entrada la última lista de proveedores guardada en este dispositivo,
+// mientras se conecta con la base compartida (que puede tardar unos segundos)
+proveedores = cargarProveedores().map(p => MIGRACION_PROVEEDOR[p] || p);
+proveedores = Array.from(new Set(proveedores)).sort((a,b) => a.localeCompare(b));
+poblarProveedores(document.getElementById('proveedor'), '');
+
+async function agregar(){
+  const tipo = document.getElementById('tipo').value;
+  const fecha = document.getElementById('fecha').value || new Date().toISOString().slice(0,10);
+  const sucursal = document.getElementById('sucursal').value;
+  const kilos = parseFloat(document.getElementById('kilos').value);
+  const importe = parseFloat(document.getElementById('precio').value);
+  let proveedor = document.getElementById('proveedor').value;
+  if(proveedor === NUEVO_PROVEEDOR) proveedor = '';
+  const factura = document.getElementById('factura').value.trim();
+  const notas = document.getElementById('notas').value.trim();
+
+  if(!kilos || kilos <= 0){
+    alert('Ingresá una cantidad de kilos válida.');
+    return;
+  }
+
+  const entry = {
+    id: Date.now(),
+    tipo, fecha, sucursal, kilos,
+    importe: isNaN(importe) ? null : importe,
+    proveedor, factura, notas
+  };
+
+  document.getElementById('kilos').value = '';
+  document.getElementById('precio').value = '';
+  poblarProveedores(document.getElementById('proveedor'), '');
+  document.getElementById('factura').value = '';
+  document.getElementById('notas').value = '';
+
+  try{
+    await guardarEntradaRemota(entry);
+  }catch(err){
+    console.error(err);
+    alert('No se pudo guardar el ingreso. Probá de nuevo.');
+  }
+}
+
+async function eliminar(id){
+  try{
+    await eliminarEntradaRemota(id);
+  }catch(err){
+    console.error(err);
+    alert('No se pudo borrar el ingreso. Probá de nuevo.');
+  }
+}
+
+function abrirEdicion(id){
+  const entrada = entradas.find(e => e.id === id);
+  if(!entrada) return;
+  editandoId = id;
+
+  document.getElementById('e_tipo').value = entrada.tipo;
+  document.getElementById('e_fecha').value = entrada.fecha;
+  document.getElementById('e_sucursal').value = entrada.sucursal || 'Rio III';
+  document.getElementById('e_kilos').value = entrada.kilos;
+  document.getElementById('e_importe').value = entrada.importe != null ? entrada.importe : '';
+  poblarProveedores(document.getElementById('e_proveedor'), entrada.proveedor || '');
+  document.getElementById('e_factura').value = entrada.factura || '';
+  document.getElementById('e_notas').value = entrada.notas || '';
+
+  document.getElementById('overlay').classList.add('open');
+  render();
+}
+
+function cerrarModal(){
+  editandoId = null;
+  document.getElementById('overlay').classList.remove('open');
+  render();
+}
+
+async function guardarEdicion(){
+  const entrada = entradas.find(e => e.id === editandoId);
+  if(!entrada) return;
+
+  const kilos = parseFloat(document.getElementById('e_kilos').value);
+  if(!kilos || kilos <= 0){
+    alert('Ingresá una cantidad de kilos válida.');
+    return;
+  }
+  const importe = parseFloat(document.getElementById('e_importe').value);
+  const eProv = document.getElementById('e_proveedor').value;
+
+  const actualizado = {
+    ...entrada,
+    tipo: document.getElementById('e_tipo').value,
+    fecha: document.getElementById('e_fecha').value || entrada.fecha,
+    sucursal: document.getElementById('e_sucursal').value,
+    kilos,
+    importe: isNaN(importe) ? null : importe,
+    proveedor: eProv === NUEVO_PROVEEDOR ? '' : eProv,
+    factura: document.getElementById('e_factura').value.trim(),
+    notas: document.getElementById('e_notas').value.trim()
+  };
+
+  editandoId = null;
+  document.getElementById('overlay').classList.remove('open');
+
+  try{
+    await guardarEntradaRemota(actualizado);
+  }catch(err){
+    console.error(err);
+    alert('No se pudieron guardar los cambios. Probá de nuevo.');
+  }
+}
+
+function render(){
+  // resumen
+  const totalesKg = {'Carne vacuna':0, Cerdo:0, Ave:0, Broza:0, Cabrito:0, Cordero:0, Lechon:0};
+  const totalesImporte = {'Carne vacuna':0, Cerdo:0, Ave:0, Broza:0, Cabrito:0, Cordero:0, Lechon:0};
+  entradas.forEach(e => {
+    totalesKg[e.tipo] = (totalesKg[e.tipo]||0) + e.kilos;
+    totalesImporte[e.tipo] = (totalesImporte[e.tipo]||0) + (e.importe || 0);
+  });
+  const resumen = document.getElementById('resumen');
+  resumen.innerHTML = Object.keys(totalesKg).map(t => `
+    <div class="item">
+      <div class="n"><span class="tag" style="background:${COLORS[t]}">${t}</span></div>
+      <div class="v">${totalesKg[t].toFixed(1)} kg</div>
+      <div class="v2">$ ${totalesImporte[t].toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+    </div>
+  `).join('');
+
+  const totalGeneral = Object.values(totalesImporte).reduce((a,b) => a+b, 0);
+  document.getElementById('totalGeneral').textContent =
+    '$ ' + totalGeneral.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  renderResumenSucursal();
+  renderResumenProveedor();
+
+  // lista
+  const lista = document.getElementById('lista');
+  if(entradas.length === 0){
+    lista.innerHTML = '<div class="empty">Todavía no hay ingresos registrados.</div>';
+    return;
+  }
+  let filas = entradas.slice();
+  if(ordenCampo){
+    filas.sort((a,b) => {
+      const va = (a[ordenCampo] || '').toString().toLowerCase();
+      const vb = (b[ordenCampo] || '').toString().toLowerCase();
+      if(va < vb) return ordenAsc ? -1 : 1;
+      if(va > vb) return ordenAsc ? 1 : -1;
+      return 0;
+    });
+  }
+
+  const flecha = campo => ordenCampo === campo ? (ordenAsc ? ' ▲' : ' ▼') : '';
+
+  lista.innerHTML = `
+    <table>
+      <tr>
+        <th ondblclick="ordenarPor('fecha')" title="Doble click para ordenar">Fecha${flecha('fecha')}</th>
+        <th ondblclick="ordenarPor('sucursal')" title="Doble click para ordenar">Sucursal${flecha('sucursal')}</th>
+        <th ondblclick="ordenarPor('tipo')" title="Doble click para ordenar">Familia${flecha('tipo')}</th>
+        <th>Kg</th>
+        <th>Importe</th>
+        <th ondblclick="ordenarPor('proveedor')" title="Doble click para ordenar">Proveedor${flecha('proveedor')}</th>
+        <th ondblclick="ordenarPor('factura')" title="Doble click para ordenar">Fact. Nro${flecha('factura')}</th>
+        <th>Notas</th>
+        <th></th>
+      </tr>
+      ${filas.map(e => `
+        <tr class="${e.id === editandoId ? 'selected' : ''}" ondblclick="abrirEdicion(${e.id})">
+          <td>${e.fecha}</td>
+          <td>${e.sucursal || '—'}</td>
+          <td><span class="tag" style="background:${COLORS[e.tipo]}">${e.tipo}</span></td>
+          <td>${e.kilos.toFixed(1)}</td>
+          <td>${e.importe != null ? e.importe.toFixed(2) : '—'}</td>
+          <td>${e.proveedor || '—'}</td>
+          <td>${e.factura || '—'}</td>
+          <td>${e.notas || '—'}</td>
+          <td>
+            <button class="edit-btn" onclick="abrirEdicion(${e.id})">Editar</button>
+            <button class="del" onclick="eliminar(${e.id})">Borrar</button>
+          </td>
+        </tr>
+      `).join('')}
+    </table>
+  `;
+}
+
+initDatos();
+
+async function exportarExcel(){
+  if(entradas.length === 0){
+    alert('No hay ingresos para exportar todavía.');
+    return;
+  }
+  const filas = entradas.map(e => ({
+    Fecha: e.fecha,
+    Sucursal: e.sucursal || '',
+    Familia: e.tipo,
+    Kilos: e.kilos,
+    Importe: e.importe != null ? e.importe : '',
+    Proveedor: e.proveedor || '',
+    'Fact. Nro': e.factura || '',
+    Notas: e.notas || ''
+  }));
+  const ws = XLSX.utils.json_to_sheet(filas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Ingresos');
+  const buf = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+  descargarArchivo(buf, 'registro-carnes.xlsx');
+}
+
+// ===== Análisis: Venta vs Ingresos de mercadería =====
+
+// mapea las familias de la planilla de venta a las familias del registro de ingresos
+const BUCKETS = [
+  {clave:'CARNE VACUNA', etiqueta:'Carne vacuna', tipos:['Carne vacuna']},
+  {clave:'CERDOS',        etiqueta:'Cerdo',        tipos:['Cerdo']},
+  {clave:'AVES',          etiqueta:'Ave',           tipos:['Ave']},
+  {clave:'BROZA',         etiqueta:'Broza',         tipos:['Broza']},
+  {clave:'CORDERO-CHIVITO-LECH', etiqueta:'Cordero / Cabrito / Lechón', tipos:['Cordero','Cabrito','Lechon']}
+];
+
+function money(n){
+  return '$ ' + (n||0).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+let ventaFilasCargadas = null;
+let ultimaAuditoria = null;
+
+function abrirAuditoria(){
+  ventaFilasCargadas = null;
+  document.getElementById('ventaFile').value = '';
+  document.getElementById('ventaFileNombre').textContent = '';
+  document.getElementById('analisisVenta').innerHTML = '';
+
+  if(!document.getElementById('aud_hasta').value){
+    const hoy = new Date();
+    const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    document.getElementById('aud_desde').value = desde.toISOString().slice(0,10);
+    document.getElementById('aud_hasta').value = hoy.toISOString().slice(0,10);
+  }
+
+  document.getElementById('overlayAuditoria').classList.add('open');
+}
+
+let filtroSucDesde = '', filtroSucHasta = '';
+let filtroProvDesde = '', filtroProvHasta = '';
+
+function abrirResumenSucursal(){
+  document.getElementById('rs_desde').value = filtroSucDesde;
+  document.getElementById('rs_hasta').value = filtroSucHasta;
+  document.getElementById('overlayResumenSucursal').classList.add('open');
+  renderResumenSucursal();
+}
+
+function cerrarResumenSucursal(){
+  document.getElementById('overlayResumenSucursal').classList.remove('open');
+}
+
+function filtrarResumenSucursal(){
+  filtroSucDesde = document.getElementById('rs_desde').value;
+  filtroSucHasta = document.getElementById('rs_hasta').value;
+  renderResumenSucursal();
+}
+
+function limpiarFiltroSucursal(){
+  filtroSucDesde = ''; filtroSucHasta = '';
+  document.getElementById('rs_desde').value = '';
+  document.getElementById('rs_hasta').value = '';
+  renderResumenSucursal();
+}
+
+function abrirResumenProveedor(){
+  document.getElementById('rp_desde').value = filtroProvDesde;
+  document.getElementById('rp_hasta').value = filtroProvHasta;
+  document.getElementById('overlayResumenProveedor').classList.add('open');
+  renderResumenProveedor();
+}
+
+function cerrarResumenProveedor(){
+  document.getElementById('overlayResumenProveedor').classList.remove('open');
+}
+
+function filtrarResumenProveedor(){
+  filtroProvDesde = document.getElementById('rp_desde').value;
+  filtroProvHasta = document.getElementById('rp_hasta').value;
+  renderResumenProveedor();
+}
+
+function limpiarFiltroProveedor(){
+  filtroProvDesde = ''; filtroProvHasta = '';
+  document.getElementById('rp_desde').value = '';
+  document.getElementById('rp_hasta').value = '';
+  renderResumenProveedor();
+}
+
+function filtrarPorRango(lista, desde, hasta){
+  return lista.filter(e => {
+    if(desde && (!e.fecha || e.fecha < desde)) return false;
+    if(hasta && (!e.fecha || e.fecha > hasta)) return false;
+    return true;
+  });
+}
+
+function renderResumenSucursal(){
+  const el = document.getElementById('resumenSucursal');
+  if(!el) return;
+
+  const datos = filtrarPorRango(entradas, filtroSucDesde, filtroSucHasta);
+  const sucursales = {};
+  datos.forEach(e => {
+    const suc = e.sucursal || 'Sin sucursal';
+    if(!sucursales[suc]) sucursales[suc] = {};
+    if(!sucursales[suc][e.tipo]) sucursales[suc][e.tipo] = {kg:0, importe:0};
+    sucursales[suc][e.tipo].kg += e.kilos;
+    sucursales[suc][e.tipo].importe += (e.importe || 0);
+  });
+
+  const nombresSucursal = Object.keys(sucursales);
+  if(nombresSucursal.length === 0){
+    el.innerHTML = '<div class="empty">No hay ingresos en el rango seleccionado.</div>';
+    return;
+  }
+  el.innerHTML = nombresSucursal.map(suc => {
+    const tipos = sucursales[suc];
+    const totalSuc = Object.values(tipos).reduce((a,b) => a + b.importe, 0);
+    const filasTipo = Object.keys(tipos).map(t => `
+      <tr>
+        <td><span class="tag" style="background:${COLORS[t] || '#888'}">${t}</span></td>
+        <td>${tipos[t].kg.toFixed(1)} kg</td>
+        <td>${money(tipos[t].importe)}</td>
+      </tr>
+    `).join('');
+    return `
+      <div class="sucursal-block">
+        <h3><span>${suc}</span><span class="tot">${money(totalSuc)}</span></h3>
+        <table>${filasTipo}</table>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderResumenProveedor(){
+  const el = document.getElementById('resumenProveedor');
+  if(!el) return;
+
+  const datos = filtrarPorRango(entradas, filtroProvDesde, filtroProvHasta);
+  const proveedoresResumen = {};
+  datos.forEach(e => {
+    const prov = e.proveedor || 'Sin especificar';
+    if(!proveedoresResumen[prov]) proveedoresResumen[prov] = {};
+    if(!proveedoresResumen[prov][e.tipo]) proveedoresResumen[prov][e.tipo] = {kg:0, importe:0};
+    proveedoresResumen[prov][e.tipo].kg += e.kilos;
+    proveedoresResumen[prov][e.tipo].importe += (e.importe || 0);
+  });
+
+  const nombresProveedor = Object.keys(proveedoresResumen).sort((a,b) => {
+    const totalA = Object.values(proveedoresResumen[a]).reduce((x,y) => x + y.importe, 0);
+    const totalB = Object.values(proveedoresResumen[b]).reduce((x,y) => x + y.importe, 0);
+    return totalB - totalA;
+  });
+
+  const totalGeneralEl = document.getElementById('totalGeneralProveedor');
+  const totalGeneral = datos.reduce((a,e) => a + (e.importe || 0), 0);
+  if(totalGeneralEl) totalGeneralEl.textContent = money(totalGeneral);
+
+  if(nombresProveedor.length === 0){
+    el.innerHTML = '<div class="empty">No hay ingresos en el rango seleccionado.</div>';
+    return;
+  }
+  el.innerHTML = nombresProveedor.map(prov => {
+    const tipos = proveedoresResumen[prov];
+    const totalProv = Object.values(tipos).reduce((a,b) => a + b.importe, 0);
+    const filasTipo = Object.keys(tipos).map(t => `
+      <tr>
+        <td><span class="tag" style="background:${COLORS[t] || '#888'}">${t}</span></td>
+        <td>${tipos[t].kg.toFixed(1)} kg</td>
+        <td>${money(tipos[t].importe)}</td>
+      </tr>
+    `).join('');
+    return `
+      <div class="sucursal-block">
+        <h3><span>${prov}</span><span class="tot">${money(totalProv)}</span></h3>
+        <table>${filasTipo}</table>
+      </div>
+    `;
+  }).join('');
+}
+
+async function exportarResumenProveedor(){
+  const datos = filtrarPorRango(entradas, filtroProvDesde, filtroProvHasta);
+  if(datos.length === 0){
+    alert('No hay ingresos en el rango seleccionado para exportar.');
+    return;
+  }
+  const proveedoresResumen = {};
+  datos.forEach(e => {
+    const prov = e.proveedor || 'Sin especificar';
+    if(!proveedoresResumen[prov]) proveedoresResumen[prov] = {};
+    if(!proveedoresResumen[prov][e.tipo]) proveedoresResumen[prov][e.tipo] = {kg:0, importe:0};
+    proveedoresResumen[prov][e.tipo].kg += e.kilos;
+    proveedoresResumen[prov][e.tipo].importe += (e.importe || 0);
+  });
+
+  const nombresProveedor = Object.keys(proveedoresResumen).sort((a,b) => {
+    const totalA = Object.values(proveedoresResumen[a]).reduce((x,y) => x + y.importe, 0);
+    const totalB = Object.values(proveedoresResumen[b]).reduce((x,y) => x + y.importe, 0);
+    return totalB - totalA;
+  });
+
+  const filas = [];
+  nombresProveedor.forEach(prov => {
+    const tipos = proveedoresResumen[prov];
+    Object.keys(tipos).forEach(t => {
+      filas.push({
+        Proveedor: prov,
+        Familia: t,
+        Kilos: Number(tipos[t].kg.toFixed(1)),
+        Importe: Number(tipos[t].importe.toFixed(2))
+      });
+    });
+    const totalProv = Object.values(tipos).reduce((a,b) => a + b.importe, 0);
+    filas.push({ Proveedor: prov, Familia: 'TOTAL', Kilos: '', Importe: Number(totalProv.toFixed(2)) });
+  });
+  const totalGeneral = datos.reduce((a,e) => a + (e.importe || 0), 0);
+  filas.push({ Proveedor: '', Familia: '', Kilos: '', Importe: '' });
+  filas.push({ Proveedor: 'TOTAL GENERAL', Familia: '', Kilos: '', Importe: Number(totalGeneral.toFixed(2)) });
+
+  const ws = XLSX.utils.json_to_sheet(filas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Resumen por proveedor');
+  const buf = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+  descargarArchivo(buf, 'resumen-por-proveedor.xlsx');
+}
+
+function cerrarAuditoria(){
+  document.getElementById('overlayAuditoria').classList.remove('open');
+}
+
+function cargarVenta(evt){
+  const file = evt.target.files && evt.target.files[0];
+  if(!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try{
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, {type:'array', cellDates:true});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      ventaFilasCargadas = XLSX.utils.sheet_to_json(ws, {defval:null});
+      document.getElementById('ventaFileNombre').textContent = '✓ ' + file.name + ' — presioná "Comparar"';
+    }catch(err){
+      console.error(err);
+      ventaFilasCargadas = null;
+      alert('No se pudo leer la planilla. Verificá que sea el formato de venta esperado.');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function ejecutarAuditoria(){
+  if(!ventaFilasCargadas){
+    alert('Primero cargá la planilla de venta (.xlsx).');
+    return;
+  }
+  const desde = document.getElementById('aud_desde').value;
+  const hasta = document.getElementById('aud_hasta').value;
+  if(!desde || !hasta){
+    alert('Completá la fecha desde y hasta.');
+    return;
+  }
+  if(desde > hasta){
+    alert('La fecha "desde" no puede ser posterior a la fecha "hasta".');
+    return;
+  }
+  procesarVenta(ventaFilasCargadas, desde, hasta);
+}
+
+function procesarVenta(filas, desde, hasta){
+  // detecta el nombre real de las columnas (por si difiere en mayúsculas/espacios)
+  const claves = filas.length ? Object.keys(filas[0]) : [];
+  const buscarClave = (posibles) => claves.find(k => posibles.includes(k.trim().toLowerCase()));
+
+  const kFamilia = buscarClave(['familia']);
+  const kCantidad = buscarClave(['cantidad']);
+  const kVentaBruta = buscarClave(['venta bruta']);
+  const kPeriodo = buscarClave(['período', 'periodo']);
+
+  if(!kFamilia || !kCantidad || !kVentaBruta){
+    document.getElementById('analisisVenta').innerHTML =
+      '<div class="empty">No se encontraron las columnas "Familia", "Cantidad" y "Venta Bruta" en la planilla.</div>';
+    return;
+  }
+
+  const ventaPorFamilia = {};
+  let periodoPlanilla = null;
+
+  filas.forEach(f => {
+    const familia = (f[kFamilia] || '').toString().trim().toUpperCase();
+    if(!familia) return;
+    const cantidad = Number(f[kCantidad]) || 0;
+    const ventaBruta = Number(f[kVentaBruta]) || 0;
+    if(!ventaPorFamilia[familia]) ventaPorFamilia[familia] = {cantidad:0, ventaBruta:0};
+    ventaPorFamilia[familia].cantidad += cantidad;
+    ventaPorFamilia[familia].ventaBruta += ventaBruta;
+
+    if(!periodoPlanilla && kPeriodo && f[kPeriodo]){
+      const val = f[kPeriodo];
+      const fecha = val instanceof Date ? val : new Date(val);
+      if(!isNaN(fecha)) periodoPlanilla = fecha.toISOString().slice(0,7); // YYYY-MM
+    }
+  });
+
+  // ingresos dentro del rango de fechas elegido en la auditoría
+  const ingresosFiltrados = entradas.filter(e => e.fecha && e.fecha >= desde && e.fecha <= hasta);
+
+  const ingresosPorBucket = {};
+  BUCKETS.forEach(b => ingresosPorBucket[b.clave] = {kg:0, importe:0});
+  ingresosFiltrados.forEach(e => {
+    const bucket = BUCKETS.find(b => b.tipos.includes(e.tipo));
+    if(!bucket) return;
+    ingresosPorBucket[bucket.clave].kg += e.kilos || 0;
+    ingresosPorBucket[bucket.clave].importe += (e.importe || 0);
+  });
+
+  // total general de la planilla completa (incluye familias no mapeadas, si las hubiera)
+  const totalCantidadVenta = Object.values(ventaPorFamilia).reduce((a,b) => a + b.cantidad, 0);
+  const totalVentaBruta = Object.values(ventaPorFamilia).reduce((a,b) => a + b.ventaBruta, 0);
+  const totalKgIngresos = Object.values(ingresosPorBucket).reduce((a,b) => a + b.kg, 0);
+  const totalImporteIngresos = Object.values(ingresosPorBucket).reduce((a,b) => a + b.importe, 0);
+
+  const filasHtml = BUCKETS.map(b => {
+    const v = ventaPorFamilia[b.clave] || {cantidad:0, ventaBruta:0};
+    const i = ingresosPorBucket[b.clave];
+    const diffKg = v.cantidad - i.kg;
+    const margen = v.ventaBruta - i.importe;
+    const margenPct = i.importe ? (margen / i.importe * 100) : null;
+    return `
+      <tr>
+        <td><span class="tag" style="background:${COLORS[b.etiqueta] || COLORS[b.tipos[0]] || '#888'}">${b.etiqueta}</span></td>
+        <td>${i.kg.toFixed(1)} kg</td>
+        <td>${money(i.importe)}</td>
+        <td>${v.cantidad.toFixed(1)} kg</td>
+        <td>${money(v.ventaBruta)}</td>
+        <td style="color:${diffKg < 0 ? 'var(--accent)' : 'var(--accent2)'}">${diffKg >= 0 ? '+' : ''}${diffKg.toFixed(1)} kg</td>
+        <td style="color:${margen < 0 ? 'var(--accent)' : 'var(--accent2)'}">${money(margen)}</td>
+        <td>${margenPct != null ? margenPct.toFixed(1) + '%' : '—'}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const margenTotal = totalVentaBruta - totalImporteIngresos;
+  const margenTotalPct = totalImporteIngresos ? (margenTotal / totalImporteIngresos * 100) : null;
+
+  // se guarda para poder exportar el mismo resultado a Excel
+  ultimaAuditoria = {
+    desde, hasta,
+    filas: BUCKETS.map(b => {
+      const v = ventaPorFamilia[b.clave] || {cantidad:0, ventaBruta:0};
+      const i = ingresosPorBucket[b.clave];
+      const margen = v.ventaBruta - i.importe;
+      return {
+        Familia: b.etiqueta,
+        'Kg comprados': Number(i.kg.toFixed(2)),
+        'Importe compra': Number(i.importe.toFixed(2)),
+        'Cantidad vendida': Number(v.cantidad.toFixed(2)),
+        'Venta bruta': Number(v.ventaBruta.toFixed(2)),
+        'Diferencia kg': Number((v.cantidad - i.kg).toFixed(2)),
+        'Margen $': Number(margen.toFixed(2)),
+        'Margen %': i.importe ? Number((margen / i.importe * 100).toFixed(2)) : ''
+      };
+    }).concat([{
+      Familia: 'Total general',
+      'Kg comprados': Number(totalKgIngresos.toFixed(2)),
+      'Importe compra': Number(totalImporteIngresos.toFixed(2)),
+      'Cantidad vendida': Number(totalCantidadVenta.toFixed(2)),
+      'Venta bruta': Number(totalVentaBruta.toFixed(2)),
+      'Diferencia kg': Number((totalCantidadVenta - totalKgIngresos).toFixed(2)),
+      'Margen $': Number(margenTotal.toFixed(2)),
+      'Margen %': totalImporteIngresos ? Number(margenTotalPct.toFixed(2)) : ''
+    }])
+  };
+
+  document.getElementById('analisisVenta').innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px">
+      <p class="sub" style="margin:0">
+        Ingresos filtrados del <strong>${desde}</strong> al <strong>${hasta}</strong>${periodoPlanilla ? ` · planilla de venta: <strong>${periodoPlanilla}</strong>` : ''}.
+      </p>
+      <button class="del" style="border:1px solid var(--border); border-radius:8px; padding:6px 10px; color:var(--text)" onclick="exportarAuditoria()">⬇ Exportar a Excel</button>
+    </div>
+    <div class="list">
+      <table>
+        <tr>
+          <th>Familia</th>
+          <th>Kg comprados</th>
+          <th>Importe compra</th>
+          <th>Cantidad vendida</th>
+          <th>Venta bruta</th>
+          <th>Diferencia kg</th>
+          <th>Margen $</th>
+          <th>Margen %</th>
+        </tr>
+        ${filasHtml}
+        <tr style="font-weight:700">
+          <td>Total general</td>
+          <td>${totalKgIngresos.toFixed(1)} kg</td>
+          <td>${money(totalImporteIngresos)}</td>
+          <td>${totalCantidadVenta.toFixed(1)} kg</td>
+          <td>${money(totalVentaBruta)}</td>
+          <td style="color:${(totalCantidadVenta-totalKgIngresos) < 0 ? 'var(--accent)' : 'var(--accent2)'}">${(totalCantidadVenta-totalKgIngresos) >= 0 ? '+' : ''}${(totalCantidadVenta-totalKgIngresos).toFixed(1)} kg</td>
+          <td style="color:${margenTotal < 0 ? 'var(--accent)' : 'var(--accent2)'}">${money(margenTotal)}</td>
+          <td>${margenTotalPct != null ? margenTotalPct.toFixed(1) + '%' : '—'}</td>
+        </tr>
+      </table>
+    </div>
+  `;
+}
+
+async function exportarAuditoria(){
+  if(!ultimaAuditoria){
+    alert('Primero generá una comparación.');
+    return;
+  }
+
+  const ws = XLSX.utils.json_to_sheet(ultimaAuditoria.filas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Auditoria');
+  const buf = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+  descargarArchivo(buf, `auditoria_${ultimaAuditoria.desde}_a_${ultimaAuditoria.hasta}.xlsx`);
+}
+</script>
+</body>
+</html>
